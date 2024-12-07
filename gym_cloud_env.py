@@ -163,7 +163,7 @@ class CloudEnv(gym.Env):
     """
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, scale='small', fname='output_5000.txt', num_task=5000, num_server=300):
+    def __init__(self, scale='small', fname='output_5000.txt', num_task=5000, num_server=300,reward_type='complex'):
         super(CloudEnv, self).__init__()
 
         self.scale = scale
@@ -173,6 +173,7 @@ class CloudEnv(gym.Env):
         self.VMNum = 5
         self.rej = 0
         self.total_tasks=0
+        self.reward_type = reward_type # 'simple' or 'complex'
 
         # Cumulative energy and cost metrics
         self.cumulative_energy = 0.0
@@ -183,11 +184,11 @@ class CloudEnv(gym.Env):
 
         # Determine number of farms based on scale
         if self.scale == 'small':
-            self.farmNum = max(1, self.severNum // 30)
+            self.farmNum = 2
         elif self.scale == 'medium':
-            self.farmNum = max(1, self.severNum // 20)
+            self.farmNum = 5
         elif self.scale == 'large':
-            self.farmNum = max(1, self.severNum // 10)
+            self.farmNum = 15
 
         # Load all tasks once
         DAG.load_all_tasks(self.fname)
@@ -224,15 +225,16 @@ class CloudEnv(gym.Env):
         self.beta = 0.05   # Idle server penalty
         self.gamma = 0.001 # Energy consumption penalty
 
-    def reset(self):
+    
+    def reset(self,seed,options=None):
         """
         Reset the environment to an initial state and return an initial observation.
         """
         # Reset random seed for variability
-        seed_val = int(time.time() * 1000) % 10000
-        # print(f"[DEBUG] Resetting environment with seed {seed_val}")
-        random.seed(seed_val)
-        np.random.seed(seed_val)
+        if seed is not None:
+            self.seed(seed)
+        if options is not None:
+            pass
 
         # Reset cumulative metrics
         self.cumulative_energy = 0.0
@@ -271,8 +273,14 @@ class CloudEnv(gym.Env):
         obs = self._get_obs()
         # print("[DEBUG] Reset complete. Initial observation shape:", obs.shape,
             #   "Tasks in queue:", len(self.task))
-        return obs
+        return obs, {}
 
+    def seed(self, seed=None):
+        """
+        Set the random seed for the environment.
+        """
+        self.np_random, seed = gym.utils.seeding.np_random(seed)
+        return [seed]
     def step(self, action):
         """
         Execute one time step within the environment.
@@ -298,15 +306,15 @@ class CloudEnv(gym.Env):
                 'AvgCPUUsagePerTask': avg_cpu_usage,
                 'AvgRAMUsagePerTask': avg_ram_usage
             }
-
-            print("[EPISODE DONE!!!!] . TOTAL TASKS:", self.total_tasks,
-                  "Total Power Used:", self.cumulative_power, 
-                  "Total Electricity Cost:", self.cumulative_elec_cost,
-                  "Total Energy Consumed:", self.cumulative_energy,
-                  "Total Tasks Rejected:", self.rej,
-                  "Avg CPU usage:", avg_cpu_usage,
-                  "Avg RAM usage:", avg_ram_usage)
-            return obs, 0.0, done, info
+            print("[DEBUG INFO]",info)
+            # print("[EPISODE DONE!!!!] . TOTAL TASKS:", self.total_tasks,
+            #       "Total Power Used:", self.cumulative_power, 
+            #       "Total Electricity Cost:", self.cumulative_elec_cost,
+            #       "Total Energy Consumed:", self.cumulative_energy,
+            #       "Total Tasks Rejected:", self.rej,
+            #       "Avg CPU usage:", avg_cpu_usage,
+            #       "Avg RAM usage:", avg_ram_usage)
+            return obs, 0.0, done, False, info
 
         # Process the first task in the queue
         t = self.task[0]
@@ -385,10 +393,14 @@ class CloudEnv(gym.Env):
 
             # Calculate energy consumption penalty
             energy_penalty = self.gamma * (current_power * t.runtime)
+            
 
             # Adjust reward with penalties
             # Removed resource_penalty from reward
-            reward = 1.0 - idle_penalty - energy_penalty
+            if self.reward_type == 'simple':
+                reward = self._simple_reward()
+            elif self.reward_type == 'complex':
+                reward = self._complex_reward(idle_penalty, energy_penalty)
 
             # Update metrics for CPU/RAM usage
             self.total_accepted_cpu += t.CPU
@@ -436,7 +448,7 @@ class CloudEnv(gym.Env):
             info = {}
 
         obs = self._get_obs()
-        return obs, reward, done, info
+        return obs, reward, done, False, info
 
     def render(self, mode='human'):
         """
@@ -448,6 +460,18 @@ class CloudEnv(gym.Env):
 
     def close(self):
         pass
+
+    def _simple_reward(self):
+        """
+        Calculate the reward based on a simple scheme.
+        """
+        return 1.0
+    
+    def _complex_reward(self, idle_penalty, energy_penalty):
+        """
+        Calculate the reward based on a complex scheme.
+        """
+        return 1.0 - idle_penalty - energy_penalty
 
     def _generateQueue(self):
         """
@@ -703,3 +727,4 @@ class CloudEnv(gym.Env):
         total_cpu = 1.0  # As per initialization
         Ur = (total_cpu - remaining_cpu) / total_cpu
         return Ur
+
