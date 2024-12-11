@@ -1,74 +1,89 @@
-# train_ppo.py
-import os
-import sys
 import gym
-import numpy as np
-import torch
-from torch.optim import Adam
+import os
 import time
-import datetime  # Import datetime for timestamp
-import random
-current_dir = os.getcwd()
-# print(f"Current Directory: {current_dir}")
+import json
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.logger import configure
 
-# Get the parent directory
-parent_dir = os.path.dirname(current_dir)
-# print(f"Parent Directory: {parent_dir}")
-
-sys.path.append(parent_dir)
-import spinup.algos.pytorch.ppo.core as core
-from spinup.algos.pytorch.ppo.ppo import ppo
-from spinup.utils.run_utils import setup_logger_kwargs
-
-# Import your custom CloudEnv
-from gym_cloud_env import CloudEnv  # Ensure the filename is correct
-
+# Define the environment factory function
 def env_fn():
     """
     Environment factory function for PPO.
-    Creates a large-scale CloudEnv for comprehensive training.
-    
-    Parameters:
-        scale (str): Determines the number of farms based on server count.
-        fname (str): Filename containing task data.
-        num_task (int): Number of tasks per episode.
-        num_server (int): Number of servers in the environment.
-    
+    Creates a custom environment for training.
+
     Returns:
-        CloudEnv: An instance of the custom CloudEnv.
+        gym.Env: Custom CloudEnv instance.
     """
-    # Create a large-scale environment
+    from gym_cloud_env import CloudEnv  # Ensure this is correctly imported
+    num_task = 1000
+    num_server = 4
     return CloudEnv(
-        scale='small',         # Adjust scale if needed (small, medium, large)
+        scale='small',
         fname='output_5000.txt',
-        num_task=1000,          # Increased from 50 to 5000
-        num_server=150          # Increased from 20 to 300
+        num_task=num_task,
+        num_server=num_server,
+        file_path=f"logs/cloud_env/ppo/final_training_data_with_{num_task}_tasks_and_{num_server}_servers_{time.time()}.csv",
     )
 
-if __name__ == '__main__':
-    # Generate a unique run name with timestamp
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    run_name = f"training_run_{timestamp}"
+# Function to load the best hyperparameters
+def load_best_hyperparameters(file_path):
+    """
+    Loads the best hyperparameters from a JSON file.
+
+    Args:
+        file_path (str): Path to the JSON file with hyperparameters.
+
+    Returns:
+        dict: Best hyperparameters.
+    """
+    with open(file_path, "r") as f:
+        return json.load(f)
+
+if __name__ == "__main__":
+    # Path to the file containing the best hyperparameters
+    best_hyperparams_file = "optuna_best_hyperparameters_ppo_1733883528.2619472.txt"
+
+    # Load the best hyperparameters
+    if not os.path.exists(best_hyperparams_file):
+        raise FileNotFoundError(f"{best_hyperparams_file} not found. Ensure the tuning script has generated this file.")
     
-    # Setup logger with the unique run name and a fixed seed
-    logger_kwargs = setup_logger_kwargs(run_name, seed=42)
+    with open(best_hyperparams_file, "r") as f:
+        best_hyperparams = eval(f.read())
 
-    # Define PPO hyperparameters tailored for a larger environment
-    ppo(
-        env_fn=env_fn,
-        actor_critic=core.MLPActorCritic,
-        ac_kwargs=dict(hidden_sizes=[128, 128, 64]),  # Increased network size for better capacity
-        steps_per_epoch=2000,    # Increased from 1000 to 10000
-        epochs=20,                # Increased from 3 to 100 for thorough training
-        gamma=0.99,
-        clip_ratio=0.2,
-        pi_lr=3e-4,
-        vf_lr=1e-3,
-        train_pi_iters=50,       # Increased from 20 to 50
-        train_v_iters=50,        # Increased from 20 to 50
-        lam=0.95,
-        max_ep_len=1200,         # Increased from 2000 to 5000, adjust based on task durations
-        target_kl=0.01,
-        logger_kwargs=logger_kwargs,  # Use the uniquely named logger_kwargs
-        save_freq=10              # Increased save frequency to every 10 epochs
+    # Create log directory for final training
+    final_log_dir = os.path.join("final_training_logs", f"ppo_{time.time()}")
+    os.makedirs(final_log_dir, exist_ok=True)
+
+    # Configure Stable Baselines logger
+    final_logger = configure(final_log_dir, ["stdout", "csv", "tensorboard"])
+
+    # Create the environment
+    env = make_vec_env(env_fn, n_envs=1, seed=42)
+
+    # Initialize the PPO model with the best hyperparameters
+    model = PPO(
+        "MlpPolicy",
+        env,
+        verbose=1,
+        tensorboard_log=final_log_dir,
+        **best_hyperparams
     )
+    
+    model.set_logger(final_logger)
+
+    # Define training timesteps for final training
+    final_training_timesteps = 100*1000  # Adjust based on your requirements
+
+    # Train the model
+    print("Starting final training...")
+    model.learn(total_timesteps=final_training_timesteps)
+    
+    # Save the trained model
+    model_save_path = os.path.join(final_log_dir, "ppo_final_model.zip")
+    model.save(model_save_path)
+    print(f"Model saved at: {model_save_path}")
+
+    # Clean up
+    env.close()
+    print("Final training complete.")
