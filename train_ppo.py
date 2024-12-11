@@ -1,116 +1,89 @@
-from stable_baselines3 import PPO
-from stable_baselines3.common.logger import configure
-from stable_baselines3.common.callbacks import BaseCallback
-from stable_baselines3.common.env_util import make_vec_env
+import gym
 import os
-import datetime
+import time
+import json
+from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.logger import configure
 
-class MetricLogger(BaseCallback):
-    """
-    Custom callback to log metrics from the `info` dictionary at the end of each episode.
-    Logs metrics to the terminal and CSV file.
-    """
-
-    def __init__(self, log_frequency=100, verbose=0):
-        super(MetricLogger, self).__init__(verbose)
-        self.log_frequency = log_frequency  # Frequency of logging
-
-    def _on_training_start(self) -> None:
-        # Debug to confirm logger output formats
-        print("[DEBUG] Logger Output Formats in Callback:", self.model.logger.output_formats)
-
-    def _on_step(self) -> bool:
-        infos = self.locals.get("infos", [])
-
-        for info in infos:
-            print("[DEBUG] Info Dictionary:", info)
-            if "EpElecCost" in info:
-                metrics = {
-                    "EpElecCost": info["EpElecCost"],
-                    "EpPowerUsed": info["EpPowerUsed"],
-                    "EpEnergyConsumed": info["EpEnergyConsumed"],
-                    "EpTasksRejected": info["EpTasksRejected"],
-                    "AvgCPUUsagePerTask": info["AvgCPUUsagePerTask"],
-                    "AvgRAMUsagePerTask": info["AvgRAMUsagePerTask"],
-                }
-
-                # Log metrics to terminal
-                if self.verbose > 0:
-                    print("--------------------------------")
-                    for key, value in metrics.items():
-                        print(f"{key}: {value}")
-                    print("--------------------------------")
-
-                # Use the model's logger to record metrics
-                print("[DEBUG] Logging Metrics to CSV:", metrics)
-                for key, value in metrics.items():
-                    self.model.logger.record(key, value)
-
-                # Dump metrics using the model's logger
-                print("[DEBUG] Dumping logger data...")
-                self.model.logger.dump(self.num_timesteps)
-
-        return True
-
-
-
+# Define the environment factory function
 def env_fn():
     """
     Environment factory function for PPO.
     Creates a custom environment for training.
-    
+
     Returns:
         gym.Env: Custom CloudEnv instance.
     """
     from gym_cloud_env import CloudEnv  # Ensure this is correctly imported
+    num_task = 1000
+    num_server = 4
     return CloudEnv(
-        scale='small',         # Adjust scale if needed (small, medium, large)
+        scale='small',
         fname='output_5000.txt',
-        num_task=1000,         # Number of tasks per episode
-        num_server=10,
-        reward_type="simple",
+        num_task=num_task,
+        num_server=num_server,
+        file_path=f"logs/cloud_env/ppo/final_training_data_with_{num_task}_tasks_and_{num_server}_servers_{time.time()}.csv",
     )
 
+# Function to load the best hyperparameters
+def load_best_hyperparameters(file_path):
+    """
+    Loads the best hyperparameters from a JSON file.
 
-if __name__ == '__main__':
-    from stable_baselines3.common.logger import configure
+    Args:
+        file_path (str): Path to the JSON file with hyperparameters.
+
+    Returns:
+        dict: Best hyperparameters.
+    """
+    with open(file_path, "r") as f:
+        return json.load(f)
+
+if __name__ == "__main__":
+    # Path to the file containing the best hyperparameters
+    best_hyperparams_file = "optuna_best_hyperparameters_ppo_1733883528.2619472.txt"
+
+    # Load the best hyperparameters
+    if not os.path.exists(best_hyperparams_file):
+        raise FileNotFoundError(f"{best_hyperparams_file} not found. Ensure the tuning script has generated this file.")
+    
+    with open(best_hyperparams_file, "r") as f:
+        best_hyperparams = eval(f.read())
+
+    # Create log directory for final training
+    final_log_dir = os.path.join("final_training_logs", f"ppo_{time.time()}")
+    os.makedirs(final_log_dir, exist_ok=True)
 
     # Configure Stable Baselines logger
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    log_dir = os.path.join("logs", f"ppo_training_{timestamp}")
-    os.makedirs(log_dir, exist_ok=True)
-    logger = configure(log_dir, ["stdout", "csv", "tensorboard"])
-    print("Logger Output Formats in main:", logger.output_formats)
+    final_logger = configure(final_log_dir, ["stdout", "csv", "tensorboard"])
 
     # Create the environment
     env = make_vec_env(env_fn, n_envs=1, seed=42)
 
-    # Define the PPO model
+    # Initialize the PPO model with the best hyperparameters
     model = PPO(
         "MlpPolicy",
         env,
         verbose=1,
-        gamma=0.99,
-        n_steps=1000,
-        batch_size=50,
-        learning_rate=3e-4,
-        clip_range=0.2,
-        vf_coef=1.0,
-        seed=42,
-        tensorboard_log=log_dir,
-    )
-    model.set_logger(logger)
-
-    # Instantiate the custom MetricLogger
-    custom_logging_callback = MetricLogger(verbose=1)
-
-    # Train the model
-    model.learn(
-        total_timesteps=50*1000,
-        callback=custom_logging_callback
+        tensorboard_log=final_log_dir,
+        **best_hyperparams
     )
     
+    model.set_logger(final_logger)
 
-    # Save the final model
-    model.save(os.path.join(log_dir, "ppo_final_model"))
-    print(f"Training complete. Logs and models saved in: {log_dir}")
+    # Define training timesteps for final training
+    final_training_timesteps = 100*1000  # Adjust based on your requirements
+
+    # Train the model
+    print("Starting final training...")
+    model.learn(total_timesteps=final_training_timesteps)
+    
+    # Save the trained model
+    model_save_path = os.path.join(final_log_dir, "ppo_final_model.zip")
+    model.save(model_save_path)
+    print(f"Model saved at: {model_save_path}")
+
+    # Clean up
+    env.close()
+    print("Final training complete.")
