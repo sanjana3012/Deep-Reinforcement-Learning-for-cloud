@@ -1,12 +1,22 @@
 To run my project follow these steps:
 1. Clone the repo.
 ``` bash
-git clone
+git clone git@github.com:sanjana3012/Deep-Reinforcement-Learning-on-Custom-Cloud-Env.git
 ```
 2. Create a virtual environment
 ``` bash
-python3 -m venv venv
+python3.9.18 -m venv venv
 source venv/bin/activate
+```
+3. If you do not have python 3.9.18, pyenv is a great tool for installing python versions on the fly. After installing python 3.9.18, then create a virtual environment!
+ ``` bash
+brew update
+brew install pyenv
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init --path)"
+eval "$(pyenv init -)"
+source ~/.zshrc  # Or ~/.bashrc, ~/.bash_profile
 ```
 3. Download appropriate libraries.
 ``` bash
@@ -26,3 +36,6 @@ python train_ppo.py
 ``` bash
  python test_ppo.py
  ```
+
+Descriptions of different scripts:
+
