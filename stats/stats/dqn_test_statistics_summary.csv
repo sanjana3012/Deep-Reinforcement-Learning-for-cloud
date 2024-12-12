@@ -1,0 +1,9 @@
+Metric,Mean,Min,Max
+Episode,5.5,1.0,10.0
+Total_Energy_Consumed,5143790.634055,2534560.0,8813843.94055
+Total_Power_Consumed,1437.094635,1360.0,1500.0
+Total_Cost,14.370946350000002,13.6,15.0
+Total Tasks,940.7,771.0,1000.0
+Total_Rejections,111.6,0.0,523.0
+Total_Accepted_Tasks,829.1,477.0,975.0
+Total_Reward,-1403.160163816915,-5497.718828169963,-141.18551282166678

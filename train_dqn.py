@@ -2,14 +2,14 @@ import gym
 import os
 import time
 import json
-from stable_baselines3 import PPO
+from stable_baselines3 import DQN
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 
 # Define the environment factory function
 def env_fn():
     """
-    Environment factory function for PPO.
+    Environment factory function for dqn.
     Creates a custom environment for training.
 
     Returns:
@@ -23,10 +23,9 @@ def env_fn():
         fname='output_5000.txt',
         num_task=num_task,
         num_server=num_server,
-        file_path=f"logs/cloud_env/ppo/final_training_data_with_{num_task}_tasks_and_{num_server}_servers_{time.time()}.csv",
+        file_path=f"logs/cloud_env/dqn/final_training_data_with_{num_task}_tasks_and_{num_server}_servers_{time.time()}.csv",
     )
 
-# Function to load the best hyperparameters
 def load_best_hyperparameters(file_path):
     """
     Loads the best hyperparameters from a JSON file.
@@ -42,7 +41,7 @@ def load_best_hyperparameters(file_path):
 
 if __name__ == "__main__":
     # Path to the file containing the best hyperparameters
-    best_hyperparams_file = "optuna_best_hyperparameters_ppo_1733883528.2619472.txt"
+    best_hyperparams_file = "optuna_best_hyperparameters_dqn_1733887864.txt"
 
     # Load the best hyperparameters
     if not os.path.exists(best_hyperparams_file):
@@ -52,7 +51,7 @@ if __name__ == "__main__":
         best_hyperparams = eval(f.read())
 
     # Create log directory for final training
-    final_log_dir = os.path.join("final_training_logs", f"ppo_{time.time()}")
+    final_log_dir = os.path.join("final_training_logs", f"dqn_{time.time()}")
     os.makedirs(final_log_dir, exist_ok=True)
 
     # Configure Stable Baselines logger
@@ -61,8 +60,8 @@ if __name__ == "__main__":
     # Create the environment
     env = make_vec_env(env_fn, n_envs=1, seed=42)
 
-    # Initialize the PPO model with the best hyperparameters
-    model = PPO(
+    # Initialize the dqn model with the best hyperparameters
+    model = DQN(
         "MlpPolicy",
         env,
         verbose=1,
@@ -73,14 +72,14 @@ if __name__ == "__main__":
     model.set_logger(final_logger)
 
     # Define training timesteps for final training
-    final_training_timesteps = 100*1000
+    final_training_timesteps = 150*1000
 
     # Train the model
     print("Starting final training...")
     model.learn(total_timesteps=final_training_timesteps)
     
     # Save the trained model
-    model_save_path = os.path.join(final_log_dir, "ppo_final_model.zip")
+    model_save_path = os.path.join(final_log_dir, "dqn_final_model.zip")
     model.save(model_save_path)
     print(f"Model saved at: {model_save_path}")
 
