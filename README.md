@@ -38,4 +38,15 @@ python train_ppo.py
  ```
 
 Descriptions of different scripts:
+The different hyperparameter_optimization_* scripts use optuna library and tune parameters for different agents.
+
+The train scripts train those agents based on the best hyperparameters.
+
+The best hyperparameters can be found in optuna_best_hyperparameters_* files.
+
+The saved models can be found under final_training_logs/agent_name/agent_name_final_model.zip
+
+The testing script is test_agents.py
+
+The raw input file is called "input.txt" and the transformed file that is input to the enviroment is called "output_5000.txt". The number 5000 has nothing to do with the number of tasks in the file (sorry for the confusion, will change the name and update all of the other files to have that changed name).
 
